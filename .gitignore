@@ -15,4 +15,7 @@ ENV/
 .idea/
 
 # Data
-*.csv 
+*.csv
+
+# Scripts
+git_push.sh
