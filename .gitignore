@@ -14,8 +14,5 @@ ENV/
 .vscode/
 .idea/
 
-# Data
-*.csv
-
 # Scripts
 git_push.sh
