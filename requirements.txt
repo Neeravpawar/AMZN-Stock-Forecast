@@ -3,4 +3,5 @@ matplotlib==3.8.2
 pandas-datareader==0.10.0
 python-dotenv==1.0.0
 statsmodels==0.14.1
-numpy>=1.24.0 
+numpy>=1.24.0
+mplfinance>=0.12.9b7 

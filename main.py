@@ -1,3 +1,4 @@
+# Import necessary libraries for data manipulation, visualization, and time series analysis
 import os
 from dotenv import load_dotenv
 import pandas as pd
@@ -6,58 +7,155 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 import numpy as np
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.stattools import acf, pacf
+import mplfinance as mpf
+
+def plot_long_term_analysis(df):
+    """
+    Create candlestick plot for the entire 12-year period with long-term moving averages
+    using monthly aggregated data
+    
+    Args:
+        df (pd.DataFrame): DataFrame with OHLCV data and DateTimeIndex
+    """
+    # Resample data to monthly timeframe
+    monthly_df = pd.DataFrame()
+    monthly_df['Open'] = df['Open'].resample('M').first()
+    monthly_df['High'] = df['High'].resample('M').max()
+    monthly_df['Low'] = df['Low'].resample('M').min()
+    monthly_df['Close'] = df['Close'].resample('M').last()
+    monthly_df['Volume'] = df['Volume'].resample('M').sum()
+    
+    # Calculate moving averages (scaled from daily to monthly)
+    # 100 days ≈ 3 months, 200 days ≈ 6 months, 500 days ≈ 15 months
+    monthly_df['MA100'] = monthly_df['Close'].rolling(window=3).mean()   # 100-day MA
+    monthly_df['MA200'] = monthly_df['Close'].rolling(window=6).mean()   # 200-day MA
+    monthly_df['MA500'] = monthly_df['Close'].rolling(window=15).mean()  # 500-day MA
+    
+    # Create custom style
+    mc = mpf.make_marketcolors(up='g', down='r',
+                              edge='inherit',
+                              wick='inherit',
+                              volume='in')
+    s = mpf.make_mpf_style(marketcolors=mc, gridstyle='--')
+    
+    # Add Moving Average overlays
+    add_plots = [
+        mpf.make_addplot(monthly_df['MA100'], color='blue', label='100-day MA'),
+        mpf.make_addplot(monthly_df['MA200'], color='orange', label='200-day MA'),
+        mpf.make_addplot(monthly_df['MA500'], color='purple', label='500-day MA')
+    ]
+    
+    # Create the plot
+    fig, axes = mpf.plot(monthly_df, 
+                        type='candle',
+                        style=s,
+                        addplot=add_plots,
+                        volume=True,
+                        title='Long-term Market Analysis (2006-2018) - Monthly',
+                        figsize=(15, 10),
+                        panel_ratios=(6,2),
+                        returnfig=True)
+    
+    # Add legend
+    axes[0].legend(['100-day MA', '200-day MA', '500-day MA'])
+    plt.show()
+
+def plot_two_year_segments(df):
+    """
+    Create separate plots for each 2-year segment with short-term moving averages
+    using weekly aggregated data
+    
+    Args:
+        df (pd.DataFrame): DataFrame with OHLCV data and DateTimeIndex
+    """
+    # Define time periods
+    periods = [
+        ('2006-2007', '2006-01-01', '2007-12-31'),
+        ('2008-2009', '2008-01-01', '2009-12-31'),
+        ('2010-2011', '2010-01-01', '2011-12-31'),
+        ('2012-2013', '2012-01-01', '2013-12-31'),
+        ('2014-2015', '2014-01-01', '2015-12-31'),
+        ('2016-2017', '2016-01-01', '2017-12-31')
+    ]
+    
+    # Create custom style
+    mc = mpf.make_marketcolors(up='g', down='r',
+                              edge='inherit',
+                              wick='inherit',
+                              volume='in')
+    s = mpf.make_mpf_style(marketcolors=mc, gridstyle='--')
+    
+    for idx, (period_name, start_date, end_date) in enumerate(periods):
+        # Get data for the period and resample to weekly
+        period_df = df[start_date:end_date].copy()
+        weekly_df = pd.DataFrame()
+        weekly_df['Open'] = period_df['Open'].resample('W').first()
+        weekly_df['High'] = period_df['High'].resample('W').max()
+        weekly_df['Low'] = period_df['Low'].resample('W').min()
+        weekly_df['Close'] = period_df['Close'].resample('W').last()
+        weekly_df['Volume'] = period_df['Volume'].resample('W').sum()
+        
+        # Calculate MAs for this period (2-week, 4-week, 8-week)
+        weekly_df['MA10'] = weekly_df['Close'].rolling(window=2).mean()  # 10-day ≈ 2-week MA
+        weekly_df['MA20'] = weekly_df['Close'].rolling(window=4).mean()  # 20-day ≈ 4-week MA
+        weekly_df['MA50'] = weekly_df['Close'].rolling(window=8).mean()  # 50-day ≈ 8-week MA
+        
+        # Create addplot with MAs
+        ap = [
+            mpf.make_addplot(weekly_df['MA10'], color='blue'),
+            mpf.make_addplot(weekly_df['MA20'], color='orange'),
+            mpf.make_addplot(weekly_df['MA50'], color='purple')
+        ]
+        
+        # Plot candlesticks and MAs
+        fig, axes = mpf.plot(weekly_df,
+                           type='candle',
+                           style=s,
+                           title=f'Market Analysis {period_name} - Weekly',
+                           volume=True,
+                           addplot=ap,
+                           figratio=(3,2),
+                           figscale=1.5,
+                           panel_ratios=(6,2),
+                           returnfig=True)
+        
+        # Add legend
+        axes[0].legend(['2-week MA', '4-week MA', '8-week MA'])
+        plt.show()
 
 def perform_seasonal_decomposition(df, period=252):
     """
     Perform seasonal decomposition on stock data using log transformation
     
     Args:
-        df (pd.DataFrame): DataFrame with 'Close' price column and DateTimeIndex
+        df (pd.DataFrame): DataFrame with OHLC price columns and DateTimeIndex
         period (int): Number of periods for seasonal decomposition (default: 252 trading days)
     
     Returns:
-        tuple: (decomposition object, log-transformed prices)
+        tuple: (decomposition object, log_transformed prices, non_trend_df)
     """
     # Apply log transformation to closing prices
     log_prices = np.log(df['Close'])
     
-    # Perform time series decomposition on log-transformed prices
+    # Perform time series decomposition on log-transformed close prices
     decomposition = seasonal_decompose(log_prices, 
-                                     period=period,  
-                                     model='additive')  # additive on log scale = multiplicative on original scale
+                                    period=period,  
+                                    model='additive')
     
-    return decomposition, log_prices
-
-def plot_decomposition(decomposition, log_prices, fig_width=12, fig_height=8):
-    """
-    Plot the seasonal decomposition components
+    # Create non-trend dataframe
+    price_columns = ['Open', 'High', 'Low', 'Close']
+    non_trend_df = pd.DataFrame(index=df.index)
     
-    Args:
-        decomposition: Seasonal decomposition object
-        log_prices (pd.Series): Log-transformed price series
-        fig_width (int): Figure width
-        fig_height (int): Figure height
-    """
-    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(fig_width, fig_height*2))
-
-    # Original (log scale)
-    ax1.plot(log_prices.index, log_prices)
-    ax1.set_title('Original Time Series (Log Scale)')
-
-    # Trend
-    ax2.plot(log_prices.index, decomposition.trend)
-    ax2.set_title('Trend (Log Scale)')
-
-    # Seasonal
-    ax3.plot(log_prices.index, decomposition.seasonal)
-    ax3.set_title('Seasonal Component (Log Scale)')
-
-    # Residual
-    ax4.plot(log_prices.index, decomposition.resid)
-    ax4.set_title('Residual (Log Scale)')
-
-    plt.tight_layout()
-    plt.show()
+    # Remove trend from all price columns using close trend
+    for col in price_columns:
+        log_col = np.log(df[col])
+        non_trend_df[col] = np.exp(log_col - decomposition.trend)
+    
+    # Add volume as is (no detrending needed)
+    if 'Volume' in df.columns:
+        non_trend_df['Volume'] = df['Volume']
+    
+    return decomposition, log_prices, non_trend_df
 
 def test_stationarity(data):
     """
@@ -89,29 +187,27 @@ def test_stationarity(data):
     print("Critical Values:")
     for key, value in results['Critical Values'].items():
         print(f"\t{key}: {value:.4f}")
-        
-    # Print interpretation
-    print("\nThe non-trend components are", 
-          "stationary (reject null hypothesis)" if is_stationary 
-          else "non-stationary (fail to reject null hypothesis)")
+    
+    print("\nThe series is", 
+          "stationary" if is_stationary else "non-stationary")
     
     return is_stationary, results
 
 def analyze_autocorrelation(data, lags=260, figsize=(12, 6)):
     """
-    Analyze and plot autocorrelation and partial autocorrelation of the data
+    Analyze and plot autocorrelation and partial autocorrelation
     
     Args:
         data (pd.Series): Stationary time series data
-        lags (int): Number of lags to calculate
-        figsize (tuple): Figure size for plots
+        lags (int): Number of lags to calculate (default: 260 trading days)
+        figsize (tuple): Figure size for plots (default: (12, 6))
     
     Returns:
         tuple: (acf values, pacf values)
     """
     # Calculate ACF and PACF
     acf_values = acf(data.dropna(), nlags=lags)
-    pacf_values = pacf(data.dropna(), nlags=lags)
+    pacf_values = pacf(data.dropna(), nlags=lags, method='ywm')
     
     # Create confidence intervals (95%)
     confidence_interval = 1.96 / np.sqrt(len(data))
@@ -120,8 +216,8 @@ def analyze_autocorrelation(data, lags=260, figsize=(12, 6)):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize)
     
     # Plot ACF
-    ax1.vlines(range(lags + 1), [0], acf_values, color='b', lw=2)
-    ax1.axhline(y=0, color='k', linestyle='-')
+    ax1.vlines(range(lags + 1), [0], acf_values)
+    ax1.axhline(y=0, color='k')
     ax1.axhline(y=confidence_interval, color='r', linestyle='--')
     ax1.axhline(y=-confidence_interval, color='r', linestyle='--')
     ax1.set_title('Autocorrelation Function')
@@ -129,8 +225,8 @@ def analyze_autocorrelation(data, lags=260, figsize=(12, 6)):
     ax1.set_ylabel('ACF')
     
     # Plot PACF
-    ax2.vlines(range(lags + 1), [0], pacf_values, color='b', lw=2)
-    ax2.axhline(y=0, color='k', linestyle='-')
+    ax2.vlines(range(lags + 1), [0], pacf_values)
+    ax2.axhline(y=0, color='k')
     ax2.axhline(y=confidence_interval, color='r', linestyle='--')
     ax2.axhline(y=-confidence_interval, color='r', linestyle='--')
     ax2.set_title('Partial Autocorrelation Function')
@@ -140,72 +236,61 @@ def analyze_autocorrelation(data, lags=260, figsize=(12, 6)):
     plt.tight_layout()
     plt.show()
     
-    # Print significant lags
-    print("\nSignificant autocorrelation lags (95% confidence):")
-    significant_lags = np.where(np.abs(acf_values) > confidence_interval)[0]
-    print(f"ACF: {significant_lags.tolist()}")
-    
-    significant_lags_pacf = np.where(np.abs(pacf_values) > confidence_interval)[0]
-    print(f"PACF: {significant_lags_pacf.tolist()}")
-    
     return acf_values, pacf_values
 
 def main():
     """
     Main function to run the stock market analysis pipeline.
     
-    Performs the following steps:
-    1. Loads and validates environment variables
-    2. Reads and preprocesses stock data
-    3. Performs seasonal decomposition
-    4. Tests for stationarity
-    5. Analyzes autocorrelation if data is stationary
+    Process:
+    1. Load and validate environment variables
+    2. Read and preprocess stock data
+    3. Generate market visualization plots
+    4. Perform seasonal decomposition
+    5. Test for stationarity
+    6. Analyze autocorrelation patterns
     
     Raises:
         ValueError: If environment variables or data format is invalid
         FileNotFoundError: If data file doesn't exist
-        Exception: For other unexpected errors
     """
     try:
         # Load environment variables
         load_dotenv()
 
-        # Get environment variables with validation
+        # Get environment variables
         data_file = os.getenv('DATA_FILE')
         if not data_file:
             raise ValueError("DATA_FILE environment variable is not set")
         
-        fig_width = int(os.getenv('FIGURE_WIDTH', 12))
-        fig_height = int(os.getenv('FIGURE_HEIGHT', 8))
-
-        # Validate file exists
         if not os.path.exists(data_file):
             raise FileNotFoundError(f"Data file not found: {data_file}")
 
         # Read and prepare stock data
         df = pd.read_csv(data_file)
-
         df['Date'] = pd.to_datetime(df['Date'])
         df.set_index('Date', inplace=True)
 
-        # Perform decomposition
-        decomposition, log_prices = perform_seasonal_decomposition(df)
+        # Generate market analysis plots
+        print("Generating long-term market analysis plot...")
+        plot_long_term_analysis(df)
         
-        # Plot decomposition results
-        plot_decomposition(decomposition, log_prices, fig_width, fig_height)
+        print("Generating two-year segment analysis plots...")
+        plot_two_year_segments(df)
 
-        # Combine seasonal and residual components
-        non_trend_data = decomposition.seasonal + decomposition.resid
+        # Perform time series analysis
+        decomposition, log_prices, non_trend_df = perform_seasonal_decomposition(df)
         
         # Test for stationarity
-        is_stationary, stat_results = test_stationarity(non_trend_data)
+        is_stationary, stat_results = test_stationarity(non_trend_df['Close'])
         
-        # If data is stationary, analyze autocorrelation
+        # Analyze autocorrelation if data is stationary
         if is_stationary:
-            acf_values, pacf_values = analyze_autocorrelation(non_trend_data)
+            acf_values, pacf_values = analyze_autocorrelation(non_trend_df['Close'])
         else:
             print("\nSkipping autocorrelation analysis as data is non-stationary")
 
+            
     except Exception as e:
         print(f"Error: {str(e)}")
         raise

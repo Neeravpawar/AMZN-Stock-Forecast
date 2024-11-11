@@ -13,6 +13,3 @@ ENV/
 # IDE
 .vscode/
 .idea/
-
-# Scripts
-git_push.sh
