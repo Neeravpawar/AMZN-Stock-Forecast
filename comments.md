@@ -82,49 +82,38 @@ Trading Implications:
 - Long-term cyclical behavior (~180 days)
 - Possible 6-month seasonal effects in the market
 
-Further Investigation Needed:
-- Examine if the 180-day cycle aligns with known market phenomena
-- Consider analyzing half-yearly seasonal patterns
-- Investigate if this pattern is stable across different time periods
+Implementation Strategy
+----------------------
+Step 1: Training and Validation Windows
+- Training Window Size: 504 days (~2 years)
+- Forecast Horizon: 10 to 42 days (2 weeks to 2 months)
+- Step Size: 21 days (~1 month)
 
-Plan for partitioning the time-series data for model formation
-------------------------------------------------------------
-Cross-Validation Strategy Overview:
+Step 2: Rolling Window Structure
+Fold Configuration:
+- Fold 1:
+  * Training: Days 1-504
+  * Validation: Days 505-547 (10 to 42 days ahead)
+- Fold 2:
+  * Training: Days 22-525
+  * Validation: Days 526-568
+- Fold 3:
+  * Training: Days 43-546
+  * Validation: Days 547-589
+- Subsequent folds follow the same pattern
 
-Data Split Structure:
-- Training Data: 60% of total data
-- Validation Data: 20% of total data
-- Buffer Zone: 10% of total data (prevents leakage)
-- Test Data: 10% of total data (held out)
+Step 3: Training and Validation Process
+1. For Each Fold:
+   - Train Model: Using training window data
+   - Generate Forecasts: Next 10 to 42 days
+   - Validate Predictions: Compare with actual values
+   - Record Performance Metrics: MSE, MAE, trading metrics
 
-Time Windows Configuration:
-- Training window size: 252 trading days (1 year)
-- Validation window size: 63 trading days (3 months)
-- Step size between folds: 21 trading days (1 month)
+2. Window Advancement:
+   - Shift Training Window: Forward by 21 days
+   - Update Validation Period: Next forecast horizon
 
-Cross-Validation Implementation:
-- 5-fold expanding window approach
-- Each subsequent fold incorporates more training data
-- Fixed-size validation periods
-- Temporal order preserved (no shuffling)
-- Recent folds weighted more heavily in evaluation
-
-Market Regime Considerations:
-- Ensure folds capture different market conditions:
-  * Bull market periods
-  * Bear market periods
-  * High volatility regimes
-  * Low volatility regimes
-
-Validation Strategy Benefits:
-- Maintains temporal dependencies in data
-- Prevents future information leakage
-- Captures various market conditions
-- Provides robust model evaluation framework
-- Aligns with observed 180-day cyclical patterns
-
-Integration with Time Series Analysis:
-- Strategy accounts for observed short-term momentum (50 days)
-- Captures medium-term reversal patterns (50-150 days)
-- Encompasses full 180-day cycles in training windows
-- Validation periods sufficient to evaluate seasonal effects
+Step 4: Performance Evaluation
+- Aggregate Results: Combine metrics across folds
+- Analyze Predictive Ability: Over forecast horizon
+- Identify Performance Trends: Across market conditions

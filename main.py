@@ -38,11 +38,18 @@ def plot_long_term_analysis(df):
                               volume='in')
     s = mpf.make_mpf_style(marketcolors=mc, gridstyle='--')
     
+    # Define colors for consistency
+    ma_colors = {
+        '100-day MA': 'blue',
+        '200-day MA': 'orange',
+        '500-day MA': 'purple'
+    }
+    
     # Add Moving Average overlays
     add_plots = [
-        mpf.make_addplot(monthly_df['MA100'], color='blue', label='100-day MA'),
-        mpf.make_addplot(monthly_df['MA200'], color='orange', label='200-day MA'),
-        mpf.make_addplot(monthly_df['MA500'], color='purple', label='500-day MA')
+        mpf.make_addplot(monthly_df['MA100'], color=ma_colors['100-day MA'], label='100-day MA'),
+        mpf.make_addplot(monthly_df['MA200'], color=ma_colors['200-day MA'], label='200-day MA'),
+        mpf.make_addplot(monthly_df['MA500'], color=ma_colors['500-day MA'], label='500-day MA')
     ]
     
     # Create the plot
@@ -54,10 +61,17 @@ def plot_long_term_analysis(df):
                         title='Long-term Market Analysis (2006-2018) - Monthly',
                         figsize=(15, 10),
                         panel_ratios=(6,2),
-                        returnfig=True)
+                        returnfig=True,
+                        volume_panel=1)
     
-    # Add legend
-    axes[0].legend(['100-day MA', '200-day MA', '500-day MA'])
+    # Clear existing legend and add colored legend
+    axes[0].legend_.remove()
+    axes[0].legend([
+        plt.Line2D([], [], color=ma_colors['100-day MA']),
+        plt.Line2D([], [], color=ma_colors['200-day MA']),
+        plt.Line2D([], [], color=ma_colors['500-day MA'])
+    ], ['100-day MA', '200-day MA', '500-day MA'], 
+    loc='upper left')
     plt.show()
 
 def plot_two_year_segments(df):
@@ -85,6 +99,13 @@ def plot_two_year_segments(df):
                               volume='in')
     s = mpf.make_mpf_style(marketcolors=mc, gridstyle='--')
     
+    # Define colors for consistency
+    ma_colors = {
+        '2-week MA': 'blue',
+        '4-week MA': 'orange',
+        '8-week MA': 'purple'
+    }
+    
     for idx, (period_name, start_date, end_date) in enumerate(periods):
         # Get data for the period and resample to weekly
         period_df = df[start_date:end_date].copy()
@@ -102,9 +123,9 @@ def plot_two_year_segments(df):
         
         # Create addplot with MAs
         ap = [
-            mpf.make_addplot(weekly_df['MA10'], color='blue'),
-            mpf.make_addplot(weekly_df['MA20'], color='orange'),
-            mpf.make_addplot(weekly_df['MA50'], color='purple')
+            mpf.make_addplot(weekly_df['MA10'], color=ma_colors['2-week MA']),
+            mpf.make_addplot(weekly_df['MA20'], color=ma_colors['4-week MA']),
+            mpf.make_addplot(weekly_df['MA50'], color=ma_colors['8-week MA'])
         ]
         
         # Plot candlesticks and MAs
@@ -117,19 +138,74 @@ def plot_two_year_segments(df):
                            figratio=(3,2),
                            figscale=1.5,
                            panel_ratios=(6,2),
-                           returnfig=True)
+                           returnfig=True,
+                           volume_panel=1)
         
-        # Add legend
-        axes[0].legend(['2-week MA', '4-week MA', '8-week MA'])
+        axes[0].legend([
+            plt.Line2D([], [], color=ma_colors['2-week MA']),
+            plt.Line2D([], [], color=ma_colors['4-week MA']),
+            plt.Line2D([], [], color=ma_colors['8-week MA'])
+        ], ['2-week MA', '4-week MA', '8-week MA'], 
+        loc='upper left')
         plt.show()
 
-def perform_seasonal_decomposition(df, period=252):
+def plot_decomposition(decomposition, log_prices, figsize=(12, 10)):
+    """
+    Plot time series decomposition components and seasonal cycle in separate figures
+    
+    Args:
+        decomposition: Seasonal decomposition object
+        log_prices: Original log-transformed prices
+        figsize (tuple): Figure size for the plot
+    """
+    # Create figure with subplots
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=figsize)
+    
+    # Plot original data
+    ax1.plot(log_prices)
+    ax1.set_title('Original Log-Transformed Data')
+    ax1.grid(True)
+    
+    # Plot trend component
+    ax2.plot(decomposition.trend)
+    ax2.set_title('Trend Component')
+    ax2.grid(True)
+    
+    # Plot seasonal component
+    ax3.plot(decomposition.seasonal)
+    ax3.set_title('Seasonal Component')
+    ax3.grid(True)
+    
+    # Plot residual component
+    ax4.plot(decomposition.resid)
+    ax4.set_title('Residual Component')
+    ax4.grid(True)
+    
+    plt.tight_layout()
+    plt.show()
+    
+    # Second figure: One cycle of seasonal pattern
+    plt.figure(figsize=(12, 6))
+    seasonal_data = decomposition.seasonal
+    cycle_length = 252  # One year of trading days
+    one_cycle = seasonal_data[:cycle_length]
+    
+    plt.plot(range(len(one_cycle)), one_cycle)
+    plt.title('One Cycle of Seasonal Pattern (1 Year)')
+    plt.xlabel('Trading Days')
+    plt.ylabel('Seasonal Effect')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+def perform_seasonal_decomposition(df, period=252, plot=True):
     """
     Perform seasonal decomposition on stock data using log transformation
     
     Args:
         df (pd.DataFrame): DataFrame with OHLC price columns and DateTimeIndex
         period (int): Number of periods for seasonal decomposition (default: 252 trading days)
+        plot (bool): Whether to plot the decomposition components (default: True)
     
     Returns:
         tuple: (decomposition object, log_transformed prices, non_trend_df)
@@ -141,6 +217,16 @@ def perform_seasonal_decomposition(df, period=252):
     decomposition = seasonal_decompose(log_prices, 
                                     period=period,  
                                     model='additive')
+    
+    # Calculate RMSE for residuals
+    residuals = decomposition.resid
+    
+    rmse = np.sqrt(np.mean(residuals**2))
+    print(f"\nResidual Component RMSE: {rmse:.6f}")
+    
+    # Plot decomposition components if requested
+    if plot:
+        plot_decomposition(decomposition, log_prices)
     
     # Create non-trend dataframe
     price_columns = ['Open', 'High', 'Low', 'Close']
@@ -273,10 +359,10 @@ def main():
 
         # Generate market analysis plots
         print("Generating long-term market analysis plot...")
-        plot_long_term_analysis(df)
+        #plot_long_term_analysis(df)
         
         print("Generating two-year segment analysis plots...")
-        plot_two_year_segments(df)
+        #plot_two_year_segments(df)
 
         # Perform time series analysis
         decomposition, log_prices, non_trend_df = perform_seasonal_decomposition(df)
