@@ -11,7 +11,6 @@ import mplfinance as mpf
 from statsmodels.tsa.arima.model import ARIMA
 from sklearn.linear_model import LinearRegression
 
-
 def plot_long_term_analysis(df):
     """
     Create candlestick plot for the entire 12-year period with long-term moving averages
@@ -282,8 +281,6 @@ def test_stationarity(data):
     
     return is_stationary, results
 
-
-
 def analyze_autocorrelation(data, lags=260, figsize=(12, 6)):
     """
     Analyze and plot autocorrelation and partial autocorrelation
@@ -358,7 +355,7 @@ def train_and_forecast_ar(df, train_size=0.8):
     test_data = detrended_prices[split_idx:]
     
     # Train ARIMA model on detrended data (p=1, d=0, q=0 for AR(1) equivalent)
-    arima_model = ARIMA(train_data, order=(2, 0, 0))
+    arima_model = ARIMA(train_data, order=(1, 0, 0))
     model_fit = arima_model.fit()
     print(model_fit.summary())
     # Make predictions
@@ -441,8 +438,6 @@ def main():
             df = df.dropna()
         
         # Train and forecast using AR model
-        print("\nTraining ARIMA model and making predictions...")
-        # define a optimal lag value using AIC
         predictions, train_data, test_data = train_and_forecast_ar(df, train_size=0.8)
         
     except Exception as e:
