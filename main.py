@@ -10,6 +10,29 @@ from statsmodels.tsa.stattools import acf, pacf
 import mplfinance as mpf
 from statsmodels.tsa.arima.model import ARIMA
 from sklearn.linear_model import LinearRegression
+from src.indicators import *
+from torch.utils.data import Dataset, DataLoader
+import torch
+
+class TimeSeriesDataset(Dataset):
+    """
+    Custom Dataset class for time series data with lagged features
+    """
+    def __init__(self, sequences, targets):
+        """
+        Args:
+            sequences (np.ndarray): Array of shape [n_samples, seq_length, n_features]
+            targets (np.ndarray): Array of shape [n_samples, n_features]
+        """
+        self.sequences = sequences
+        self.targets = targets
+        
+    def __len__(self):
+        return len(self.sequences)
+    
+    def __getitem__(self, idx):
+        return (torch.FloatTensor(self.sequences[idx]), 
+                torch.FloatTensor(self.targets[idx]))
 
 def plot_long_term_analysis(df):
     """
@@ -379,6 +402,110 @@ def train_and_forecast_ar(df, train_size=0.8):
     
     return predictions, train_data, test_data
 
+def prepare_data_for_modeling(df):
+    """
+    Prepare data for modeling by applying log transformation and normalization
+    
+    Args:
+        df (pd.DataFrame): DataFrame with OHLCV data and DateTimeIndex
+        
+    Returns:
+        pd.DataFrame: DataFrame with log-transformed and normalized values
+    """
+    model_df = df.copy()
+    columns_to_transform = ['Open', 'High', 'Low', 'Close']
+    
+    # Store original values
+    model_df.attrs['original_values'] = {
+        col: model_df[col].copy() for col in columns_to_transform
+    }
+    
+    # Apply log transformation
+    for col in columns_to_transform:
+        model_df[col] = np.log(model_df[col])
+    
+    # Normalize log-transformed data
+    for col in columns_to_transform:
+        mean = model_df[col].mean()
+        std = model_df[col].std()
+        model_df[f'{col}_norm'] = (model_df[col] - mean) / std
+        
+    # Store normalization parameters
+    model_df.attrs['norm_params'] = {
+        col: {'mean': model_df[col].mean(), 'std': model_df[col].std()}
+        for col in columns_to_transform
+    }
+    
+    return model_df
+
+def prepare_data_loaders(model_df, seq_length=100, batch_size=32):
+    """
+    Prepare train and test DataLoaders for time series modeling
+    """
+    # Get normalized feature columns
+    feature_columns = ['Open_norm', 'High_norm', 'Low_norm', 'Close_norm']
+    
+    # Create sequences for all data first
+    total_samples = len(model_df) - seq_length
+    sequences = np.zeros((total_samples, seq_length, len(feature_columns)))
+    targets = np.zeros((total_samples, len(feature_columns)))
+    
+    # Generate all sequences
+    for idx in range(total_samples):
+        sequences[idx] = model_df[feature_columns].iloc[idx:idx + seq_length].values
+        targets[idx] = model_df[feature_columns].iloc[idx + seq_length].values
+    
+    # Calculate split points
+    train_size = int(total_samples * 0.75)
+    test_size = int(total_samples * 0.15)
+    buffer_size = total_samples - (train_size + test_size)
+    
+    # Split data
+    train_sequences = sequences[:train_size]
+    train_targets = targets[:train_size]
+    
+    test_start_idx = train_size + buffer_size
+    test_sequences = sequences[test_start_idx:test_start_idx + test_size]
+    test_targets = targets[test_start_idx:test_start_idx + test_size]
+    
+    # Create datasets
+    train_dataset = TimeSeriesDataset(train_sequences, train_targets)
+    test_dataset = TimeSeriesDataset(test_sequences, test_targets)
+    
+    # Create DataLoaders
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True
+    )
+    
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False
+    )
+    
+    print(f"\nDataset Summary:")
+    print(f"Total sequences generated: {total_samples}")
+    print(f"Training samples: {len(train_dataset)}")
+    print(f"Test samples: {len(test_dataset)}")
+    print(f"Buffer zone samples: {total_samples - (train_size + test_size)}")
+    print(f"Feature dimension: {len(feature_columns)}")
+    print(f"Sequence length: {seq_length}")
+    print(f"Batch size: {batch_size}")
+
+    train_end_date = model_df.index[train_size + seq_length]
+    buffer_end_date = model_df.index[test_start_idx + seq_length]
+    test_end_date = model_df.index[test_start_idx + test_size + seq_length - 1]
+    
+    print(f"\nDate Ranges:")
+    print(f"Training: up to {train_end_date.strftime('%Y-%m-%d')}")
+    print(f"Buffer zone: {train_end_date.strftime('%Y-%m-%d')} to {buffer_end_date.strftime('%Y-%m-%d')}")
+    print(f"Testing: {buffer_end_date.strftime('%Y-%m-%d')} to {test_end_date.strftime('%Y-%m-%d')}")
+    
+    return train_loader, test_loader, train_dataset, test_dataset
+
+
 def main():
     """
     Main function to run the stock market analysis pipeline.
@@ -390,6 +517,9 @@ def main():
     4. Perform seasonal decomposition
     5. Test for stationarity
     6. Analyze autocorrelation patterns
+    7. Baseline model training and forecasting
+    8. Prepare data for modeling
+    9. Prepare data loaders
     
     Raises:
         ValueError: If environment variables or data format is invalid
@@ -413,10 +543,10 @@ def main():
         df.set_index('Date', inplace=True)
 
         # Generate market analysis plots
-        print("Generating long-term market analysis plot...")
+        #print("Generating long-term market analysis plot...")
         #plot_long_term_analysis(df)
         
-        print("Generating two-year segment analysis plots...")
+        #print("Generating two-year segment analysis plots...")
         #plot_two_year_segments(df)
 
         # Perform time series analysis
@@ -438,8 +568,25 @@ def main():
             df = df.dropna()
         
         # Train and forecast using AR model
-        predictions, train_data, test_data = train_and_forecast_ar(df, train_size=0.8)
+        #predictions, train_data, test_data = train_and_forecast_ar(df, train_size=0.8)
+
+        # Prepare data for modeling
+        print("Preparing data for modeling...")
+        model_df = prepare_data_for_modeling(df)
         
+        # Prepare data loaders
+        seq_length = 50
+        batch_size = 32
+        train_loader, test_loader, train_dataset, test_dataset = prepare_data_loaders(
+            model_df,
+            seq_length=seq_length,
+            batch_size=batch_size
+        )
+
+        for sequences, targets in train_loader:
+            print(sequences.shape, targets.shape)
+            break
+
     except Exception as e:
         print(f"Error: {str(e)}")
         raise
