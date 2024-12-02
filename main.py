@@ -34,6 +34,7 @@ class TimeSeriesDataset(Dataset):
         return (torch.FloatTensor(self.sequences[idx]), 
                 torch.FloatTensor(self.targets[idx]))
 
+
 def plot_long_term_analysis(df):
     """
     Create candlestick plot for the entire 12-year period with long-term moving averages
@@ -417,15 +418,15 @@ def prepare_data_for_modeling(df):
     
     # Store original values
     model_df.attrs['original_values'] = {
-        col: model_df[col].copy() for col in columns_to_transform
+        col: model_df[col].copy() for col in columns_to_transform + ['Volume']
     }
     
     # Apply log transformation
     for col in columns_to_transform:
         model_df[col] = np.log(model_df[col])
-    
+
     # Normalize log-transformed data
-    for col in columns_to_transform:
+    for col in columns_to_transform + ['Volume']:
         mean = model_df[col].mean()
         std = model_df[col].std()
         model_df[f'{col}_norm'] = (model_df[col] - mean) / std
@@ -433,7 +434,7 @@ def prepare_data_for_modeling(df):
     # Store normalization parameters
     model_df.attrs['norm_params'] = {
         col: {'mean': model_df[col].mean(), 'std': model_df[col].std()}
-        for col in columns_to_transform
+        for col in columns_to_transform + ['Volume']
     }
     
     return model_df
@@ -443,7 +444,7 @@ def prepare_data_loaders(model_df, seq_length=100, batch_size=32):
     Prepare train and test DataLoaders for time series modeling
     """
     # Get normalized feature columns
-    feature_columns = ['Open_norm', 'High_norm', 'Low_norm', 'Close_norm']
+    feature_columns = ['Open_norm', 'High_norm', 'Low_norm', 'Close_norm', 'Volume_norm']
     
     # Create sequences for all data first
     total_samples = len(model_df) - seq_length
