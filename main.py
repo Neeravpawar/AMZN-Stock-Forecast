@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 import pandas as pd
 from src import *
 import torch
-
+from torch.nn import nn
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 def main():
     """
@@ -150,8 +151,70 @@ def main():
         mean_scores = cv_results.get_mean_scores()
         print("\nFinal Cross-validation Results:")
         print(f"Mean Train Loss: {mean_scores['mean_train_loss']:.4f} ± {mean_scores['std_train_loss']:.4f}")
-        print(f"Mean Val Loss: {mean_scores['mean_val_loss']:.4f} ± {mean_scores['std_val_loss']:.4f}")
+        print(f"Mean Val Loss: {mean_scores['mean_val_loss']:.4f} ± {mean_scores['std_val_loss']:.4f}")   
         
+        # ------------------------- Final model training and evaluation -------------------------
+        print("\nTraining final model on the full training data...")
+        
+        # Initialize the model
+        final_model = Autoformer(**model_params).to(training_params['device'])
+        
+        optimizer = ADOPT(
+            final_model.parameters(),
+            lr=7e-3,
+            betas=(0.9, 0.9999),
+            eps=1e-6,
+            weight_decay=0.02,
+            decouple=True
+        )
+        criterion = nn.MSELoss()
+        
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.6, patience=4, verbose=True)
+        
+        # Train the model
+        train_losses, val_losses = train_final_model(
+            final_model, 
+            train_loader,
+            optimizer, 
+            scheduler, 
+            criterion, 
+            training_params['num_epochs'], 
+            training_params['device'],
+            training_params['patience'], 
+            training_params['min_delta']
+        )
+        
+        
+        # ------------------ Evaluate the Model on the Test Set ------------------
+        print("\nEvaluating the model on the test set...")
+        
+        # Retrieve normalization parameters
+        norm_params = model_df.attrs['norm_params']
+        
+        # Define the feature to plot
+        feature_to_plot = 'Close_norm'
+        
+        # Evaluate the model
+        test_loss, predictions_original, true_values_original = evaluate_model(
+            final_model, test_loader, training_params['device'], norm_params, feature_columns, feature_to_plot
+        )
+        
+        print(f"Test Loss (MSE): {test_loss:.4f}")
+        
+        # ------------------ Plot Predictions vs. True Values ------------------
+        plot_predictions(
+            predictions_original, 
+            true_values_original, 
+            model_df, 
+            test_start_idx, 
+            model_params['seq_len'], 
+            model_params['pred_len'], 
+            feature_columns,
+            feature_to_plot=feature_to_plot
+        )
+
+        # Save the model
+        torch.save(final_model.state_dict(), 'transformer_model.pth')
 
     except Exception as e:
         print(f"Error: {str(e)}")
